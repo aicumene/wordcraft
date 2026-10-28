@@ -36,8 +36,8 @@ pub struct TextRun {
 
 /// The text on `page` of `doc`'s layout, line by line: the header, then the body with its tables,
 /// notes and text boxes as they are placed, then the footer. Turned text (a table cell's text
-/// direction) and text in a drawing canvas are left out, and a line's hyphen at a hyphenated
-/// break; in a layout that shows tracked changes (markup), deleted text is on the page and here.
+/// direction), equations, text in a drawing canvas and a line's hyphen at a hyphenated break are
+/// left out; in a layout that shows tracked changes (markup), deleted text is on the page and here.
 pub fn page_text(doc: &Document, page: &Page) -> Vec<TextRun> {
     let mut out = Vec::new();
     for it in page.header.iter().chain(&page.items).chain(&page.footer) {
