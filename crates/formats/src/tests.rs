@@ -498,6 +498,39 @@ fn deep_nesting_is_bounded() {
     assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
 }
 
+/// Phase 0 of Bernio's evaluation (aicumene/wordcraft): a contract whose file gives two bookmarks
+/// each of the names `definitions` and `termination` (the second in a table cell) exported each
+/// twice, so Markdown and HTML had an `id` twice and an anchor where the bookmark isn't (Go To
+/// goes to the first). Every format writes each name once, where the first one is.
+#[test]
+fn exports_write_each_bookmark_name_once() {
+    let mut d = Document::from_text("Definitions\nFreight is included.\nTermination");
+    let mark = |name: &str| InlineObject::BookmarkStart { name: name.into() };
+    for (block, name) in [(2, "termination"), (1, "definitions"), (0, "definitions")] {
+        d.insert_object(&wordcraft_doc::Pos::body(block, 0), mark(name), &CharProps::default()).unwrap();
+    }
+    let mut cell = Paragraph::with_text("720 EUR", CharProps::default());
+    cell.text.insert(0, wordcraft_doc::para::OBJ);
+    cell.objects.push(mark("termination"));
+    cell.runs.insert(0, wordcraft_doc::para::Run { len: wordcraft_doc::para::OBJ.len_utf8(), props: CharProps::default() });
+    cell.normalize();
+    let mut t = Table::new(1, 1, 100.0);
+    t.rows[0].cells[0].blocks = vec![para_block(cell)];
+    d.body.push(Arc::new(Block::Table(t)));
+    let md = String::from_utf8(export("md", &d).unwrap().unwrap()).unwrap();
+    assert_eq!(md.matches("<a id=").count(), 2, "{md}");
+    assert!(md.starts_with("<a id=\"definitions\"></a>Definitions\n"), "{md}");
+    assert!(md.contains("\nFreight is included.\n") && md.contains("| 720 EUR |"), "{md}");
+    assert!(md.contains("\n<a id=\"termination\"></a>Termination\n"), "{md}");
+    let html = String::from_utf8(export("html", &d).unwrap().unwrap()).unwrap();
+    assert_eq!((html.matches("id=\"definitions\"").count(), html.matches("id=\"termination\"").count()), (1, 1), "{html}");
+    for ext in ["rtf", "odt", "tex"] {
+        let back = import(ext, &export(ext, &d).unwrap().unwrap()).unwrap().unwrap();
+        let names: Vec<String> = back.bookmarks().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["definitions", "termination"], "{ext}");
+    }
+}
+
 /// What a document says in an equation or a bookmark name is not written to the exported file as
 /// TeX commands: compiling the export must not read files or run programs the document names.
 #[test]

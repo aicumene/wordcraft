@@ -330,13 +330,31 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable 
 
 /// The document body as a flow.
 pub fn from_doc(doc: &Document) -> Flow {
-    flow_of(doc, false)
+    let mut flow = flow_of(doc, false);
+    first_anchors(&mut flow.blocks, &mut std::collections::HashSet::new(), 0);
+    flow
 }
 
 /// [`from_doc`] keeping tracked changes: deleted text stays, and text carries its insertion and
 /// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF).
 pub fn from_doc_tracked(doc: &Document) -> Flow {
-    flow_of(doc, true)
+    let mut flow = flow_of(doc, true);
+    first_anchors(&mut flow.blocks, &mut std::collections::HashSet::new(), 0);
+    flow
+}
+
+/// Keep the first anchor of each name (`seen`: the names already met). A file may give two
+/// bookmarks one name (Word wants each name once); Go To and links go to the first, and a second
+/// anchor of that name would put a link target where the document has none (an HTML or Markdown
+/// `id` twice, an ODT bookmark name twice).
+fn first_anchors(blocks: &mut [FBlock], seen: &mut std::collections::HashSet<String>, depth: usize) {
+    for b in blocks {
+        match b {
+            FBlock::Para(p) => p.inlines.retain(|i| !matches!(i, Inline::Anchor(name) if !seen.insert(name.clone()))),
+            FBlock::Table(t) if depth < MAX_DEPTH => t.rows.iter_mut().flatten().for_each(|c| first_anchors(&mut c.blocks, seen, depth + 1)),
+            FBlock::Table(_) => {}
+        }
+    }
 }
 
 fn flow_of(doc: &Document, tracked: bool) -> Flow {
