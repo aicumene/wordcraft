@@ -133,6 +133,7 @@ fn inlines_md_impl(inlines: &[Inline], in_table: bool) -> String {
                 pieces.push((String::new(), Fmt::default(), Some(format!("<a id=\"{safe}\"></a>"))));
             }
             Inline::Figure(alt) => pieces.push((String::new(), Fmt::default(), Some(format!("![{}]()", escape(alt))))),
+            Inline::NoteRef { mark, .. } => pieces.push((String::new(), Fmt::default(), Some(format!("[^{}]", note_label(mark))))),
             Inline::Equation { .. } => {}
             // Read as its base text by `ruby_as_text` above.
             Inline::Ruby { .. } => {}
@@ -286,11 +287,71 @@ pub(super) fn table_md(t: &FTable, out: &mut Vec<String>) {
     }
 }
 
-/// Markdown text of a document.
+/// `mark` as a footnote label: its letters, digits, `-` and `_` (`note` when none are left).
+fn note_label(mark: &str) -> String {
+    let l: String = mark.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')).collect();
+    if l.is_empty() { "note".to_string() } else { l }
+}
+
+/// Each note's footnote label (note id → label): its mark when that is a label of its own, else
+/// `note` and its place, so no two notes share one (marks that start again in each section, a
+/// custom mark such as `*`).
+fn note_labels(notes: &[crate::notes::Note]) -> HashMap<u32, String> {
+    let mut used = std::collections::HashSet::new();
+    let mut out = HashMap::new();
+    for (k, n) in notes.iter().enumerate() {
+        let mut label = note_label(&n.mark);
+        if label != n.mark || used.contains(&label) {
+            label = (k + 1..).map(|i| format!("note{i}")).find(|l| !used.contains(l)).unwrap_or_default();
+        }
+        used.insert(label.clone());
+        out.insert(n.id, label);
+    }
+    out
+}
+
+/// Note references in `blocks` (table cells too) given their footnote labels.
+fn relabel(blocks: &mut [FBlock], labels: &HashMap<u32, String>, depth: usize) {
+    for b in blocks {
+        match b {
+            FBlock::Para(p) => {
+                for i in &mut p.inlines {
+                    if let Inline::NoteRef { id, mark } = i
+                        && let Some(l) = labels.get(id)
+                    {
+                        mark.clone_from(l);
+                    }
+                }
+            }
+            FBlock::Table(t) if depth < model::MAX_DEPTH => t.rows.iter_mut().flatten().for_each(|c| relabel(&mut c.blocks, labels, depth + 1)),
+            FBlock::Table(_) => {}
+        }
+    }
+}
+
+/// Markdown text of a document. Footnotes and endnotes are footnotes (`[^1]` where the reference
+/// is, `[^1]: The note.` after the body), labelled with their marks.
 pub fn export(doc: &Document) -> String {
-    let flow = model::from_doc(doc);
+    let mut flow = model::from_doc(doc);
+    let mut notes = crate::notes::notes(doc);
+    let labels = note_labels(&notes);
+    relabel(&mut flow.blocks, &labels, 0);
     let mut out: Vec<String> = Vec::new();
     write_blocks(&flow.blocks, &mut out);
+    for note in &mut notes {
+        relabel(&mut note.blocks, &labels, 0);
+        let mut lines = Vec::new();
+        write_blocks(&note.blocks, &mut lines);
+        while lines.last().is_some_and(String::is_empty) {
+            lines.pop();
+        }
+        let label = labels.get(&note.id).map_or("note", String::as_str);
+        let mut lines = lines.into_iter();
+        out.push(format!("[^{label}]: {}", lines.next().unwrap_or_default()).trim_end().to_string());
+        // A note's later paragraphs are indented to stay in it.
+        out.extend(lines.map(|l| if l.is_empty() { l } else { format!("    {l}") }));
+        out.push(String::new());
+    }
     let mut s = out.join("\n");
     while s.ends_with("\n\n") {
         s.pop();

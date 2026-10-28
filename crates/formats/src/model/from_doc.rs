@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::types::{Cell, FBlock, FTable, Flow, Fmt, FmtChange, Img, Inline, Kind, ListInfo, MAX_DEPTH, Meta, Para, RevMark, Spacing};
 use super::*;
 
@@ -120,15 +122,23 @@ fn media_ext(key: &str, data: &[u8]) -> String {
     }
 }
 
+/// The marks of the notes a flow refers to (part id → mark, see [`crate::notes`]), and the note
+/// whose own text is being read: its mark at the start of its text is left out.
+#[derive(Clone, Copy)]
+struct Notes<'a> {
+    marks: &'a HashMap<u32, String>,
+    own: Option<u32>,
+}
+
 /// A document paragraph as flow paragraphs: a page break character inside the text ends the
 /// paragraph, and the text after it starts a new one that carries `page_break`.
 pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
-    flow_paras_in(doc, p, false)
+    flow_paras_in(doc, p, false, Notes { marks: &HashMap::new(), own: None })
 }
 
 /// [`flow_paras`]; `tracked` keeps tracked changes: deleted text stays, and text carries its
 /// insertion and deletion marks.
-fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
+fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool, notes: Notes) -> Vec<Para> {
     let (kind, list) = para_kind(doc, p);
     let mut done: Vec<Para> = Vec::new();
     let borders = if kind == Kind::Rule { None } else { p.props.borders.filter(|b| b.any_visible()) };
@@ -242,6 +252,13 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
                     // attributes (alignment, size, raise) stay in the document model.
                     out.inlines.push(Inline::Ruby { base: base.clone(), ruby: ruby.clone(), fmt: f.clone() });
                 }
+                Some(InlineObject::NoteRef { id, .. }) if notes.own != Some(*id) && notes.marks.contains_key(id) => {
+                    if !buf.is_empty() {
+                        out.push_text(&std::mem::take(&mut buf), &f);
+                    }
+                    let mark = notes.marks.get(id).cloned().unwrap_or_default();
+                    out.inlines.push(Inline::NoteRef { id: *id, mark });
+                }
                 Some(InlineObject::BookmarkStart { name }) if name != "_GoBack" => {
                     if !buf.is_empty() {
                         out.push_text(&std::mem::take(&mut buf), &f);
@@ -273,16 +290,16 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
     done
 }
 
-fn flow_blocks(doc: &Document, bl: &Blocks, depth: usize, tracked: bool) -> Vec<FBlock> {
+fn flow_blocks(doc: &Document, bl: &Blocks, depth: usize, tracked: bool, notes: Notes) -> Vec<FBlock> {
     let mut out = Vec::new();
     for b in bl {
         match &**b {
-            Block::Para(p) => out.extend(flow_paras_in(doc, p, tracked).into_iter().map(FBlock::Para)),
-            Block::Table(t) if depth < MAX_DEPTH => out.push(FBlock::Table(flow_table(doc, t, depth, tracked))),
+            Block::Para(p) => out.extend(flow_paras_in(doc, p, tracked, notes).into_iter().map(FBlock::Para)),
+            Block::Table(t) if depth < MAX_DEPTH => out.push(FBlock::Table(flow_table(doc, t, depth, tracked, notes))),
             Block::Table(t) => {
                 for r in &t.rows {
                     for c in &r.cells {
-                        out.extend(flow_blocks(doc, &c.blocks, depth, tracked));
+                        out.extend(flow_blocks(doc, &c.blocks, depth, tracked, notes));
                     }
                 }
             }
@@ -291,7 +308,7 @@ fn flow_blocks(doc: &Document, bl: &Blocks, depth: usize, tracked: bool) -> Vec<
     out
 }
 
-fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable {
+fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool, notes: Notes) -> FTable {
     let mut rows = Vec::new();
     for (ri, r) in t.rows.iter().enumerate() {
         let header = r.props.header || (ri == 0 && t.props.look.header_row && t.rows.len() > 1);
@@ -309,7 +326,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable 
                 }
             }
             cells.push(Cell {
-                blocks: flow_blocks(doc, &c.blocks, depth + 1, tracked),
+                blocks: flow_blocks(doc, &c.blocks, depth + 1, tracked, notes),
                 colspan: c.span() as u32,
                 rowspan,
                 covered: c.props.vmerge == VMerge::Continue,
@@ -341,8 +358,9 @@ pub fn from_doc_tracked(doc: &Document) -> Flow {
 
 fn flow_of(doc: &Document, tracked: bool) -> Flow {
     let c = &doc.core;
+    let marks: HashMap<u32, String> = crate::notes::marks(doc).into_iter().map(|(id, _, mark)| (id, mark)).collect();
     Flow {
-        blocks: flow_blocks(doc, &doc.body, 0, tracked),
+        blocks: flow_blocks(doc, &doc.body, 0, tracked, Notes { marks: &marks, own: None }),
         meta: Meta {
             title: c.title.clone(),
             author: c.creator.clone(),
@@ -352,6 +370,16 @@ fn flow_of(doc: &Document, tracked: bool) -> Flow {
             created: c.created.clone(),
         },
     }
+}
+
+/// The text of note `own` (its story's `blocks`) as flow blocks, without its own mark and the
+/// blanks after it; other notes it refers to show their marks.
+pub(crate) fn note_blocks(doc: &Document, blocks: &Blocks, marks: &HashMap<u32, String>, own: u32) -> Vec<FBlock> {
+    let mut out = flow_blocks(doc, blocks, 0, false, Notes { marks, own: Some(own) });
+    if let Some(FBlock::Para(p)) = out.first_mut() {
+        p.trim_with(&[' ', '\t'], &[]);
+    }
+    out
 }
 
 /// List labels in document order for list paragraphs of a flow ("1.", "a.", "•"), computed by a

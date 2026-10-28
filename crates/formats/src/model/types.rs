@@ -147,6 +147,13 @@ pub enum Inline {
     Image(Img),
     /// A bookmark (link target).
     Anchor(String),
+    /// A footnote or endnote reference: the note's part id and the mark it shows (`1`, `iv`, a
+    /// custom mark). Plain text and Markdown write the note itself ([`crate::notes`]); the other
+    /// formats leave the reference out.
+    NoteRef {
+        id: u32,
+        mark: String,
+    },
     /// A chart or diagram known here only by its alt text: written where alt text has a place
     /// (an HTML or Markdown image), left out of editable formats so it never turns into body text.
     Figure(String),
@@ -263,20 +270,21 @@ impl Para {
         }
         self.inlines.push(Inline::Text(s.to_string(), f.clone()));
     }
-    /// The plain text (images and anchors left out; equations as their linear text, ruby as its
-    /// base text).
+    /// The plain text (images, anchors and note references left out; equations as their linear
+    /// text, ruby as its base text).
     pub fn text(&self) -> String {
         let mut s = String::new();
         for i in &self.inlines {
             match i {
                 Inline::Text(t, _) | Inline::Equation { linear: t, .. } | Inline::Ruby { base: t, .. } => s.push_str(t),
-                Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) => {}
+                Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) | Inline::NoteRef { .. } => {}
             }
         }
         s
     }
     /// [`Self::text`] as it reads on screen: text set in a symbol font (Symbol, Wingdings…) as
-    /// its Unicode equivalents ([`wordcraft_doc::symbol_fonts`]), for plain-text export.
+    /// its Unicode equivalents ([`wordcraft_doc::symbol_fonts`]), and a note reference as its mark
+    /// in brackets (`[1]`), for plain-text export.
     pub fn shown_text(&self) -> String {
         let mut s = String::new();
         for i in &self.inlines {
@@ -286,6 +294,11 @@ impl Para {
                     _ => s.push_str(t),
                 },
                 Inline::Equation { linear: t, .. } | Inline::Ruby { base: t, .. } => s.push_str(t),
+                Inline::NoteRef { mark, .. } => {
+                    s.push('[');
+                    s.push_str(mark);
+                    s.push(']');
+                }
                 Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) => {}
             }
         }
