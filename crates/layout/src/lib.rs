@@ -19,6 +19,7 @@ pub mod outline;
 pub mod para;
 pub mod styleref;
 mod table;
+pub mod text;
 mod textbox;
 mod vertical;
 pub mod wordart;
