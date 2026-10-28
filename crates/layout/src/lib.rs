@@ -19,6 +19,7 @@ pub mod outline;
 pub mod para;
 pub mod styleref;
 mod table;
+pub mod text;
 mod textbox;
 mod vertical;
 pub mod wordart;
@@ -4946,6 +4947,8 @@ mod tests_pages;
 mod tests_styleref;
 #[cfg(test)]
 mod tests_table_contact;
+#[cfg(test)]
+mod tests_text;
 #[cfg(test)]
 mod tests_textbox;
 #[cfg(test)]

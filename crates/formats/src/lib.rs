@@ -15,6 +15,7 @@ pub mod latex;
 pub mod markdown;
 pub mod mathml;
 pub mod model;
+pub mod notes;
 pub mod odt;
 pub mod rtf;
 pub mod sheet;

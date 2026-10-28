@@ -375,6 +375,77 @@ fn txt_export_keeps_list_labels() {
     assert_eq!(lines.next(), Some("plain"));
 }
 
+/// "The price¹ is fixed." with footnote 1 "Net of tax.", then a table whose cell says "Freightⁱ"
+/// with endnote i "Paid by the buyer." Each note's text starts with its own mark, as Word writes it.
+fn with_notes() -> Document {
+    use wordcraft_doc::para::NoteKind;
+    use wordcraft_doc::{Path, Pos, StoryRef};
+    let mut d = Document::from_text("The price is fixed.");
+    let add_note = |d: &mut Document, kind: NoteKind, text: &str| {
+        let part = if kind == NoteKind::Footnote { wordcraft_doc::PartKind::Footnote } else { wordcraft_doc::PartKind::Endnote };
+        let id = d.add_part(part, vec![para_block(Paragraph::with_text(text, CharProps::default()))]);
+        let own = InlineObject::NoteRef { kind, id, custom: String::new() };
+        d.insert_object(&Pos { story: StoryRef::Part(id), path: Path::top(0), off: 0 }, own, &CharProps::default()).unwrap();
+        InlineObject::NoteRef { kind, id, custom: String::new() }
+    };
+    let foot = add_note(&mut d, NoteKind::Footnote, " Net of tax.");
+    let end = add_note(&mut d, NoteKind::Endnote, " Paid by the buyer.");
+    d.insert_object(&wordcraft_doc::Pos::body(0, 9), foot, &CharProps::default()).unwrap();
+    let mut cell = Paragraph::with_text("Freight", CharProps::default());
+    cell.text.push(wordcraft_doc::para::OBJ);
+    cell.objects.push(end);
+    cell.runs.push(wordcraft_doc::para::Run { len: wordcraft_doc::para::OBJ.len_utf8(), props: CharProps::default() });
+    cell.normalize();
+    let mut t = Table::new(1, 1, 100.0);
+    t.rows[0].cells[0].blocks = vec![para_block(cell)];
+    d.body.push(Arc::new(Block::Table(t)));
+    d
+}
+
+/// Phase 0 of Bernio's evaluation (aicumene/wordcraft): plain text and Markdown left out every
+/// footnote, so 8% of the words of a contract with footnotes were missing from its text. Each
+/// reference now shows its mark where it is, and the notes follow the body, footnotes first.
+#[test]
+fn txt_and_markdown_exports_write_footnotes_and_endnotes() {
+    let d = with_notes();
+    let txt = String::from_utf8(export("txt", &d).unwrap().unwrap()).unwrap();
+    assert_eq!(txt.split("\r\n").collect::<Vec<_>>(), ["The price[1] is fixed.", "Freight[i]", "", "[1] Net of tax.", "[i] Paid by the buyer."]);
+    let md = String::from_utf8(export("md", &d).unwrap().unwrap()).unwrap();
+    assert!(md.starts_with("The price[^1] is fixed.\n"), "{md}");
+    assert!(md.contains("| Freight[^i] |"), "{md}");
+    assert!(md.ends_with("[^1]: Net of tax.\n\n[^i]: Paid by the buyer.\n"), "{md}");
+    // Formats that don't write notes leave the reference out, as before.
+    let html = String::from_utf8(export("html", &d).unwrap().unwrap()).unwrap();
+    assert!(html.contains("The price is fixed.") && !html.contains("Net of tax"), "{html}");
+}
+
+/// The marks are the page's: a tracked deletion takes no number, a hidden reference keeps its
+/// number but isn't written, and a custom mark shows as it is (a Markdown label of its own).
+#[test]
+fn text_export_numbers_notes_as_the_page_does() {
+    use wordcraft_doc::para::NoteKind;
+    let mut d = Document::from_text("a b c d e");
+    let mut refs = Vec::new();
+    for (k, custom) in ["", "", "", "", "*"].into_iter().enumerate() {
+        let id = d.add_part(wordcraft_doc::PartKind::Footnote, vec![para_block(Paragraph::with_text(&format!("note {k}"), CharProps::default()))]);
+        refs.push(InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: custom.into() });
+    }
+    // After each letter, last first so the offsets hold.
+    for (k, r) in refs.into_iter().enumerate().rev() {
+        d.insert_object(&wordcraft_doc::Pos::body(0, 2 * k + 1), r, &CharProps::default()).unwrap();
+    }
+    let obj = wordcraft_doc::para::OBJ.len_utf8();
+    let at = |k: usize| wordcraft_doc::Pos::body(0, 2 * k + 1 + k * obj);
+    let (b, c) = (at(1), at(2));
+    d.format_range(&b, &wordcraft_doc::Pos { off: b.off + obj, ..b.clone() }, &|p| p.del = Some(0)).unwrap();
+    d.format_range(&c, &wordcraft_doc::Pos { off: c.off + obj, ..c.clone() }, &|p| p.hidden = Some(true)).unwrap();
+    let txt = String::from_utf8(export("txt", &d).unwrap().unwrap()).unwrap();
+    assert_eq!(txt.split("\r\n").collect::<Vec<_>>(), ["a[1] b c d[3] e[*]", "", "[1] note 0", "[3] note 3", "[*] note 4"]);
+    let md = String::from_utf8(export("md", &d).unwrap().unwrap()).unwrap();
+    assert!(md.starts_with("a[^1] b c d[^3] e[^note3]\n"), "{md}");
+    assert!(md.ends_with("[^1]: note 0\n\n[^3]: note 3\n\n[^note3]: note 4\n"), "{md}");
+}
+
 /// #569: a file with an extension we don't know opens as text when it is text (a playlist), and
 /// a binary file is told apart.
 #[test]
@@ -496,6 +567,39 @@ fn deep_nesting_is_bounded() {
     let tex = "\\begin{".repeat(300_000);
     assert!(import("tex", tex.as_bytes()).unwrap().is_ok());
     assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
+}
+
+/// Phase 0 of Bernio's evaluation (aicumene/wordcraft): a contract whose file gives two bookmarks
+/// each of the names `definitions` and `termination` (the second in a table cell) exported each
+/// twice, so Markdown and HTML had an `id` twice and an anchor where the bookmark isn't (Go To
+/// goes to the first). Every format writes each name once, where the first one is.
+#[test]
+fn exports_write_each_bookmark_name_once() {
+    let mut d = Document::from_text("Definitions\nFreight is included.\nTermination");
+    let mark = |name: &str| InlineObject::BookmarkStart { name: name.into() };
+    for (block, name) in [(2, "termination"), (1, "definitions"), (0, "definitions")] {
+        d.insert_object(&wordcraft_doc::Pos::body(block, 0), mark(name), &CharProps::default()).unwrap();
+    }
+    let mut cell = Paragraph::with_text("720 EUR", CharProps::default());
+    cell.text.insert(0, wordcraft_doc::para::OBJ);
+    cell.objects.push(mark("termination"));
+    cell.runs.insert(0, wordcraft_doc::para::Run { len: wordcraft_doc::para::OBJ.len_utf8(), props: CharProps::default() });
+    cell.normalize();
+    let mut t = Table::new(1, 1, 100.0);
+    t.rows[0].cells[0].blocks = vec![para_block(cell)];
+    d.body.push(Arc::new(Block::Table(t)));
+    let md = String::from_utf8(export("md", &d).unwrap().unwrap()).unwrap();
+    assert_eq!(md.matches("<a id=").count(), 2, "{md}");
+    assert!(md.starts_with("<a id=\"definitions\"></a>Definitions\n"), "{md}");
+    assert!(md.contains("\nFreight is included.\n") && md.contains("| 720 EUR |"), "{md}");
+    assert!(md.contains("\n<a id=\"termination\"></a>Termination\n"), "{md}");
+    let html = String::from_utf8(export("html", &d).unwrap().unwrap()).unwrap();
+    assert_eq!((html.matches("id=\"definitions\"").count(), html.matches("id=\"termination\"").count()), (1, 1), "{html}");
+    for ext in ["rtf", "odt", "tex"] {
+        let back = import(ext, &export(ext, &d).unwrap().unwrap()).unwrap().unwrap();
+        let names: Vec<String> = back.bookmarks().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["definitions", "termination"], "{ext}");
+    }
 }
 
 /// What a document says in an equation or a bookmark name is not written to the exported file as

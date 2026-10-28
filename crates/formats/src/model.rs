@@ -2,6 +2,7 @@
 //! quote, code…), list membership, alignment and formatted inline spans; tables of cells holding
 //! blocks. [`to_doc`] and [`from_doc`] convert between it and the full [`Document`].
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use wordcraft_doc::numbering::{AbstractNum, Level, ListKind, Num, levels_for};
@@ -82,6 +83,13 @@ pub enum Inline {
     Image(Img),
     /// A bookmark (link target).
     Anchor(String),
+    /// A footnote or endnote reference: the note's part id and the mark it shows (`1`, `iv`, a
+    /// custom mark). Plain text and Markdown write the note itself ([`crate::notes`]); the other
+    /// formats leave the reference out.
+    NoteRef {
+        id: u32,
+        mark: String,
+    },
     /// A chart or diagram known here only by its alt text: written where alt text has a place
     /// (an HTML or Markdown image), left out of editable formats so it never turns into body text.
     Figure(String),
@@ -198,20 +206,21 @@ impl Para {
         }
         self.inlines.push(Inline::Text(s.to_string(), f.clone()));
     }
-    /// The plain text (images and anchors left out; equations as their linear text, ruby as its
-    /// base text).
+    /// The plain text (images, anchors and note references left out; equations as their linear
+    /// text, ruby as its base text).
     pub fn text(&self) -> String {
         let mut s = String::new();
         for i in &self.inlines {
             match i {
                 Inline::Text(t, _) | Inline::Equation { linear: t, .. } | Inline::Ruby { base: t, .. } => s.push_str(t),
-                Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) => {}
+                Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) | Inline::NoteRef { .. } => {}
             }
         }
         s
     }
     /// [`Self::text`] as it reads on screen: text set in a symbol font (Symbol, Wingdings…) as
-    /// its Unicode equivalents ([`wordcraft_doc::symbol_fonts`]), for plain-text export.
+    /// its Unicode equivalents ([`wordcraft_doc::symbol_fonts`]), and a note reference as its mark
+    /// in brackets (`[1]`), for plain-text export.
     pub fn shown_text(&self) -> String {
         let mut s = String::new();
         for i in &self.inlines {
@@ -221,6 +230,11 @@ impl Para {
                     _ => s.push_str(t),
                 },
                 Inline::Equation { linear: t, .. } | Inline::Ruby { base: t, .. } => s.push_str(t),
+                Inline::NoteRef { mark, .. } => {
+                    s.push('[');
+                    s.push_str(mark);
+                    s.push(']');
+                }
                 Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) => {}
             }
         }
@@ -606,7 +620,7 @@ impl<'a> Builder<'a> {
                     append(&mut out, "", &CharProps::default(), Some(InlineObject::BookmarkStart { name: name.clone() }));
                     append(&mut out, "", &CharProps::default(), Some(InlineObject::BookmarkEnd { name: name.clone() }));
                 }
-                Inline::Figure(_) => {}
+                Inline::Figure(_) | Inline::NoteRef { .. } => {}
                 Inline::Equation { linear, display } => {
                     let linear = clean_text(linear);
                     if !linear.is_empty() {
@@ -949,15 +963,23 @@ fn media_ext(key: &str, data: &[u8]) -> String {
     }
 }
 
+/// The marks of the notes a flow refers to (part id → mark, see [`crate::notes`]), and the note
+/// whose own text is being read: its mark at the start of its text is left out.
+#[derive(Clone, Copy)]
+struct Notes<'a> {
+    marks: &'a HashMap<u32, String>,
+    own: Option<u32>,
+}
+
 /// A document paragraph as flow paragraphs: a page break character inside the text ends the
 /// paragraph, and the text after it starts a new one that carries `page_break`.
 pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
-    flow_paras_in(doc, p, false)
+    flow_paras_in(doc, p, false, Notes { marks: &HashMap::new(), own: None })
 }
 
 /// [`flow_paras`]; `tracked` keeps tracked changes: deleted text stays, and text carries its
 /// insertion and deletion marks.
-fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
+fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool, notes: Notes) -> Vec<Para> {
     let (kind, list) = para_kind(doc, p);
     let mut done: Vec<Para> = Vec::new();
     let borders = if kind == Kind::Rule { None } else { p.props.borders.filter(|b| b.any_visible()) };
@@ -1071,6 +1093,13 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
                     // attributes (alignment, size, raise) stay in the document model.
                     out.inlines.push(Inline::Ruby { base: base.clone(), ruby: ruby.clone(), fmt: f.clone() });
                 }
+                Some(InlineObject::NoteRef { id, .. }) if notes.own != Some(*id) && notes.marks.contains_key(id) => {
+                    if !buf.is_empty() {
+                        out.push_text(&std::mem::take(&mut buf), &f);
+                    }
+                    let mark = notes.marks.get(id).cloned().unwrap_or_default();
+                    out.inlines.push(Inline::NoteRef { id: *id, mark });
+                }
                 Some(InlineObject::BookmarkStart { name }) if name != "_GoBack" => {
                     if !buf.is_empty() {
                         out.push_text(&std::mem::take(&mut buf), &f);
@@ -1102,16 +1131,16 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
     done
 }
 
-fn flow_blocks(doc: &Document, bl: &Blocks, depth: usize, tracked: bool) -> Vec<FBlock> {
+fn flow_blocks(doc: &Document, bl: &Blocks, depth: usize, tracked: bool, notes: Notes) -> Vec<FBlock> {
     let mut out = Vec::new();
     for b in bl {
         match &**b {
-            Block::Para(p) => out.extend(flow_paras_in(doc, p, tracked).into_iter().map(FBlock::Para)),
-            Block::Table(t) if depth < MAX_DEPTH => out.push(FBlock::Table(flow_table(doc, t, depth, tracked))),
+            Block::Para(p) => out.extend(flow_paras_in(doc, p, tracked, notes).into_iter().map(FBlock::Para)),
+            Block::Table(t) if depth < MAX_DEPTH => out.push(FBlock::Table(flow_table(doc, t, depth, tracked, notes))),
             Block::Table(t) => {
                 for r in &t.rows {
                     for c in &r.cells {
-                        out.extend(flow_blocks(doc, &c.blocks, depth, tracked));
+                        out.extend(flow_blocks(doc, &c.blocks, depth, tracked, notes));
                     }
                 }
             }
@@ -1120,7 +1149,7 @@ fn flow_blocks(doc: &Document, bl: &Blocks, depth: usize, tracked: bool) -> Vec<
     out
 }
 
-fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable {
+fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool, notes: Notes) -> FTable {
     let mut rows = Vec::new();
     for (ri, r) in t.rows.iter().enumerate() {
         let header = r.props.header || (ri == 0 && t.props.look.header_row && t.rows.len() > 1);
@@ -1138,7 +1167,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable 
                 }
             }
             cells.push(Cell {
-                blocks: flow_blocks(doc, &c.blocks, depth + 1, tracked),
+                blocks: flow_blocks(doc, &c.blocks, depth + 1, tracked, notes),
                 colspan: c.span() as u32,
                 rowspan,
                 covered: c.props.vmerge == VMerge::Continue,
@@ -1159,19 +1188,38 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable 
 
 /// The document body as a flow.
 pub fn from_doc(doc: &Document) -> Flow {
-    flow_of(doc, false)
+    let mut flow = flow_of(doc, false);
+    first_anchors(&mut flow.blocks, &mut std::collections::HashSet::new(), 0);
+    flow
 }
 
 /// [`from_doc`] keeping tracked changes: deleted text stays, and text carries its insertion and
 /// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF).
 pub fn from_doc_tracked(doc: &Document) -> Flow {
-    flow_of(doc, true)
+    let mut flow = flow_of(doc, true);
+    first_anchors(&mut flow.blocks, &mut std::collections::HashSet::new(), 0);
+    flow
+}
+
+/// Keep the first anchor of each name (`seen`: the names already met). A file may give two
+/// bookmarks one name (Word wants each name once); Go To and links go to the first, and a second
+/// anchor of that name would put a link target where the document has none (an HTML or Markdown
+/// `id` twice, an ODT bookmark name twice).
+fn first_anchors(blocks: &mut [FBlock], seen: &mut std::collections::HashSet<String>, depth: usize) {
+    for b in blocks {
+        match b {
+            FBlock::Para(p) => p.inlines.retain(|i| !matches!(i, Inline::Anchor(name) if !seen.insert(name.clone()))),
+            FBlock::Table(t) if depth < MAX_DEPTH => t.rows.iter_mut().flatten().for_each(|c| first_anchors(&mut c.blocks, seen, depth + 1)),
+            FBlock::Table(_) => {}
+        }
+    }
 }
 
 fn flow_of(doc: &Document, tracked: bool) -> Flow {
     let c = &doc.core;
+    let marks: HashMap<u32, String> = crate::notes::marks(doc).into_iter().map(|(id, _, mark)| (id, mark)).collect();
     Flow {
-        blocks: flow_blocks(doc, &doc.body, 0, tracked),
+        blocks: flow_blocks(doc, &doc.body, 0, tracked, Notes { marks: &marks, own: None }),
         meta: Meta {
             title: c.title.clone(),
             author: c.creator.clone(),
@@ -1315,6 +1363,16 @@ pub fn mime_of(ext: &str) -> &'static str {
         "ico" => "image/x-icon",
         _ => "application/octet-stream",
     }
+}
+
+/// The text of note `own` (its story's `blocks`) as flow blocks, without its own mark and the
+/// blanks after it; other notes it refers to show their marks.
+pub(crate) fn note_blocks(doc: &Document, blocks: &Blocks, marks: &HashMap<u32, String>, own: u32) -> Vec<FBlock> {
+    let mut out = flow_blocks(doc, blocks, 0, false, Notes { marks, own: Some(own) });
+    if let Some(FBlock::Para(p)) = out.first_mut() {
+        p.trim_with(&[' ', '\t'], &[]);
+    }
+    out
 }
 
 /// List labels in document order for list paragraphs of a flow ("1.", "a.", "•"), computed by a

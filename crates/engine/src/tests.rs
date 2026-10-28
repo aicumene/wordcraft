@@ -951,6 +951,30 @@ fn replace_under_track_changes_skips_deleted_text() {
     assert_eq!(text(&s), "one dog two dog");
 }
 
+/// Phase 0 of Bernio's evaluation (aicumene/wordcraft) read one `edit.replace` with Track Changes
+/// on as replacing nothing: from a caret, Replace first finds the match, as Word's Replace button
+/// does, and the next call replaces it. The result says which a call did.
+#[test]
+fn replace_says_whether_it_replaced() {
+    use wordcraft_doc::RevisionKind::{Delete, Insert};
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "Notice of three months."}));
+    run(&mut s, "file.setAuthor", json!({"name": "Claude Code"}));
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    run(&mut s, "caret.docStart", json!({}));
+    let with = json!({"text": "three months", "with": "six months"});
+    let r = run(&mut s, "edit.replace", with.clone());
+    assert_eq!((&r["replaced"], &r["remaining"]), (&json!(false), &json!(1)), "the first call finds the match");
+    assert!(s.doc.revisions.is_empty() && !s.sel.is_collapsed());
+    let r = run(&mut s, "edit.replace", with.clone());
+    assert_eq!((&r["replaced"], &r["remaining"]), (&json!(true), &json!(0)));
+    let kinds: Vec<_> = s.doc.revisions.iter().map(|r| (r.kind, r.author.as_str())).collect();
+    assert!(kinds.contains(&(Delete, "Claude Code")) && kinds.contains(&(Insert, "Claude Code")), "{kinds:?}");
+    assert_eq!(run(&mut s, "edit.replace", with)["replaced"], false, "nothing left to replace");
+    run(&mut s, "review.acceptAll", json!({}));
+    assert_eq!(text(&s), "Notice of six months.");
+}
+
 #[test]
 fn find_reads_the_text_around_tracked_deletions() {
     // `edits` are (start, end) byte ranges deleted with Track Changes on, last first.

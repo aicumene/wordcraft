@@ -2,7 +2,7 @@
 //! encoding the bytes look like (GBK/GB18030, Big5, Shift_JIS, EUC-KR, Windows code pages…;
 //! #778), Windows-1252 when nothing fits better.
 //! Export writes UTF-8 with CRLF line ends; list paragraphs get their label and a tab, table
-//! cells are separated by tabs.
+//! cells are separated by tabs, and footnotes and endnotes follow the body.
 
 use wordcraft_doc::Document;
 
@@ -159,10 +159,22 @@ fn blocks_text(blocks: &[FBlock], out: &mut Vec<String>, lists: &mut ListCounter
     }
 }
 
-/// UTF-8 text, CRLF line ends.
+/// UTF-8 text, CRLF line ends. Footnotes and endnotes follow the body, after an empty line, each
+/// starting with its mark in brackets as its reference shows it (`[1] The note.`).
 pub fn export(doc: &Document) -> Vec<u8> {
     let flow = from_doc(doc);
     let mut lines = Vec::new();
     blocks_text(&flow.blocks, &mut lines, &mut ListCounter::default(), 0);
+    let notes = crate::notes::notes(doc);
+    if !notes.is_empty() {
+        lines.push(String::new());
+    }
+    for note in notes {
+        let mut text = Vec::new();
+        blocks_text(&note.blocks, &mut text, &mut ListCounter::default(), 0);
+        let first = text.first().map_or("", String::as_str);
+        lines.push(format!("[{}] {first}", note.mark).trim_end().to_string());
+        lines.extend(text.into_iter().skip(1));
+    }
     lines.join("\r\n").into_bytes()
 }

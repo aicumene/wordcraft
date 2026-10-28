@@ -126,6 +126,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .key(super::mac_or("Mod+Shift+G / Mod+PageUp", "Mod+PageUp"))
         .params(r#"{"text"?: string, "matchCase"?: bool, "wholeWord"?: bool, "regex"?: bool}"#)
         .pure(),
+        // Returns {"replaced": bool (false: no match was selected, so this call only selected the next one), "remaining": n}.
         CommandSpec::new("edit.replace", "Replace", "Home › Editing", replace).params(r#"{"text": string, "with": string, …options of edit.replaceAll}"#),
         // Ctrl+H, Home › Replace: the Find and Replace dialog on its Replace tab (#712). Opening
         // it changes nothing, so it is its own command and never marks the document edited.
@@ -679,6 +680,10 @@ fn need_query(s: &Session, v: &Value) -> Result<(), CmdError> {
     Ok(())
 }
 
+/// Word's Replace button: the match the selection is on is replaced and the next one selected; when
+/// no match is selected (a caret), the call only finds and selects the next one, and the following
+/// call replaces it. `replaced` says which a call did, so a script or agent can tell "found" from
+/// "replaced" (with Track Changes on, a replacement is a tracked deletion and insertion).
 fn replace(s: &mut Session, v: &Value) -> CmdResult {
     need_query(s, v)?;
     read_opts(s, v);
@@ -686,11 +691,13 @@ fn replace(s: &mut Session, v: &Value) -> CmdResult {
     let results = search_full(s, story, true)?;
     let (a, b) = s.sel.ordered();
     // Replace the current match if selected, then move to the next.
-    if let Some(f) = results.into_iter().find(|f| f.a == a && f.b == b) {
+    let current = results.into_iter().find(|f| f.a == a && f.b == b);
+    let replaced = current.is_some();
+    if let Some(f) = current {
         super::paste_text(s, &f.rep.unwrap_or_default())?;
     }
     let _ = step(s, 1);
-    Ok(json!({"remaining": search(s, story)?.len()}))
+    Ok(json!({"replaced": replaced, "remaining": search(s, story)?.len()}))
 }
 
 /// Every match replaced, last first so earlier positions stay valid (one undo step). A `\r` in
