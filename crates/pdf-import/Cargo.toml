@@ -1,0 +1,18 @@
+[package]
+name = "wordcraft-pdf-import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WordCraft PDF Reflow: opens a PDF as an editable document (paragraphs, styles, lists, tables, pictures, headers and footers)"
+
+[lints]
+workspace = true
+
+[dependencies]
+wordcraft-doc = { workspace = true }
+wordcraft-fonts = { workspace = true }
+craft-pdf = { workspace = true, features = ["interpret"] }
+kurbo = { workspace = true }
+skrifa = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }

@@ -1195,9 +1195,10 @@ impl WordApp {
         let go = match choice {
             SaveChoice::Cancel => false,
             SaveChoice::DontSave => true,
-            // A new document or an import-only Word file: ask where through Save As. The command
-            // runs once that has saved, on a later frame with the non-blocking dialog (#94).
-            SaveChoice::Save if (self.session.path.is_none() || self.legacy_word_path()) && self.services.download.is_none() => {
+            // A new document or an import (a Word 97–2003 file, a PDF): ask where through Save
+            // As. The command runs once that has saved, on a later frame with the non-blocking
+            // dialog (#94).
+            SaveChoice::Save if (self.session.path.is_none() || self.import_only_path()) && self.services.download.is_none() => {
                 return match self.save_as(file_dialogs::AfterSave::Continue { then, params, document }) {
                     file_dialogs::Asked::Done(r) => r,
                     file_dialogs::Asked::Pending => Ok(json!({"pending": "saveAs"})),
@@ -1226,12 +1227,12 @@ impl WordApp {
     /// User commands can ask for a supported Save As target or an opening password (#55).
     /// Scripts and agents use [`WordApp::execute`], which never opens these dialogs.
     pub(crate) fn execute_user(&mut self, id: &str, params: Value) -> Result<Value, String> {
-        // Legacy Word files are import-only (#2445). Only a user's implicit Save asks for
-        // a supported target; scripts and explicitly supplied paths keep their normal errors.
+        // Legacy Word files (#2445) and PDFs are import-only. Only a user's implicit Save asks
+        // for a supported target; scripts and explicitly supplied paths keep their normal errors.
         if id == "file.save"
             && params.get("path").and_then(Value::as_str).is_none()
             && self.has_document()
-            && self.legacy_word_path()
+            && self.import_only_path()
             && self.services.download.is_none()
         {
             return match self.save_as(file_dialogs::AfterSave::Nothing) {
@@ -1971,20 +1972,22 @@ impl WordApp {
         r
     }
 
-    /// These paths have readers but no writer, so an interactive save needs another format.
-    fn legacy_word_path(&self) -> bool {
+    /// These paths are imports, so an interactive save needs another format: Word 97–2003 files
+    /// have a reader but no writer, and a PDF saved back would replace the original with
+    /// WordCraft's layout of it (PDF Reflow; Word, too, saves a reflowed PDF as a new .docx).
+    fn import_only_path(&self) -> bool {
         self.session
             .path
             .as_ref()
             .and_then(|p| p.extension())
             .and_then(|e| e.to_str())
-            .is_some_and(|e| e.eq_ignore_ascii_case("doc") || e.eq_ignore_ascii_case("dot"))
+            .is_some_and(|e| ["doc", "dot", "pdf"].iter().any(|x| e.eq_ignore_ascii_case(x)))
     }
 
     /// The name a browser Save or Export without a name uses. An export is named after the
     /// document (`report.pdf`, not `report.docx.pdf`). A host page that keeps the files
     /// ([`Services::host_save`]) gets Save back under the opened file's own name and format, as
-    /// the desktop app writes it, except an import-only Word 97–2003 file (#2445).
+    /// the desktop app writes it, except an import-only Word 97–2003 file (#2445) or PDF.
     fn web_save_name(&self, id: &str) -> String {
         match id {
             "file.exportPdf" => return format!("{}.pdf", self.title_stem()),
@@ -1993,7 +1996,7 @@ impl WordApp {
         }
         if id == "file.save"
             && self.services.host_save.is_some()
-            && !self.legacy_word_path()
+            && !self.import_only_path()
             && let Some(name) = self.session.path.as_ref().and_then(|p| p.file_name())
         {
             return name.to_string_lossy().to_string();

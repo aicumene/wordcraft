@@ -33,7 +33,7 @@ People trust WordCraft with their writing; a crash loses their work. **This outr
 |---|---|---|
 | L0 | `geom` | units, rects, measurement parsing |
 | L1 | `doc`, `fonts` | document model + edit primitives; font DB, shaping, Word font substitution |
-| L2 | `layout`, `docx`, `formats` | line breaking, pagination, tables, headers/footers, hit testing; OOXML I/O; TXT/MD/HTML/RTF/ODT |
+| L2 | `layout`, `docx`, `formats`, `pdf-import` | line breaking, pagination, tables, headers/footers, hit testing; OOXML I/O; TXT/MD/HTML/RTF/ODT; PDF Reflow |
 | L3 | `render`, `pdf`, `proof` | vello_cpu rasteriser; krilla PDF; proofing |
 | L4 | `engine` | Session, undo, **command registry**, Word feature catalog, samples, I/O dispatch |
 | L5 | `mcp` | MCP server (headless or bridged to the app) |

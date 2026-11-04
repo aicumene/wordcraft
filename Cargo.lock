@@ -1016,6 +1016,8 @@ name = "craft-pdf"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=17744430be327d0257496a6a31c8d38fe20a6756#17744430be327d0257496a6a31c8d38fe20a6756"
 dependencies = [
+ "hayro-interpret",
+ "hayro-syntax",
  "krilla",
  "thiserror 2.0.21",
 ]
@@ -1587,12 +1589,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
-name = "fearless_simd"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3296eb97d869113eaf148a6bdf01884e90b3828ad7ae2340b0f93362fc158611"
-
-[[package]]
 name = "filetime"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2153,16 +2149,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f4d0e94ddd48749f06bbe4e5389fb9799a0c45bcaf00495042076ef05e3241a"
 
 [[package]]
-name = "hayro-ccitt"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2866f0d976e76497480b853d5e258dab6e4b89ecfe991124e08f15dfa8fd03ad"
-
-[[package]]
 name = "hayro-cmap"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24d285dc30731c8485de5fa732fbdf2b3affdf01e4da7c2135022ca6fa664bf6"
+source = "git+https://github.com/storytold/craft-libs?rev=17744430be327d0257496a6a31c8d38fe20a6756#17744430be327d0257496a6a31c8d38fe20a6756"
 dependencies = [
  "brotli",
  "hayro-postscript",
@@ -2171,8 +2160,7 @@ dependencies = [
 [[package]]
 name = "hayro-interpret"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2613d0406898995042d0794c4245b2f2fba1246490c8ac593769bba6551129d"
+source = "git+https://github.com/storytold/craft-libs?rev=17744430be327d0257496a6a31c8d38fe20a6756#17744430be327d0257496a6a31c8d38fe20a6756"
 dependencies = [
  "bitflags 2.13.2",
  "hayro-cmap",
@@ -2182,19 +2170,18 @@ dependencies = [
  "phf",
  "rustc-hash 2.1.3",
  "siphasher",
- "skrifa 0.42.1",
+ "skrifa 0.47.0",
  "smallvec",
  "yoke",
 ]
 
 [[package]]
 name = "hayro-jbig2"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "000e025850f4592ddcaee85640db70704151f2bafd43b6f431aa5b6a2c6a35a9"
+version = "0.3.0"
+source = "git+https://github.com/storytold/craft-libs?rev=17744430be327d0257496a6a31c8d38fe20a6756#17744430be327d0257496a6a31c8d38fe20a6756"
 dependencies = [
- "fearless_simd 1.1.0",
- "hayro-ccitt 0.4.0",
+ "fearless_simd",
+ "hayro-ccitt",
 ]
 
 [[package]]
@@ -2203,28 +2190,27 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c75ab947623ef4ccaa7acf0579edf7cbb5a73838e3839a7be73335e522f433a1"
 dependencies = [
- "fearless_simd 0.4.1",
+ "fearless_simd",
 ]
 
 [[package]]
 name = "hayro-postscript"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "885c5ef0654933139a9b9546fc2c69e18d37f38aa2520f079092b1be18f1fcaa"
+source = "git+https://github.com/storytold/craft-libs?rev=17744430be327d0257496a6a31c8d38fe20a6756#17744430be327d0257496a6a31c8d38fe20a6756"
 
 [[package]]
 name = "hayro-syntax"
 version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0edeafd70aa2db743de8ede8637d07ec87db05efe69cde371d03f1b185fcef27"
+source = "git+https://github.com/storytold/craft-libs?rev=17744430be327d0257496a6a31c8d38fe20a6756#17744430be327d0257496a6a31c8d38fe20a6756"
 dependencies = [
  "flate2",
- "hayro-ccitt 0.3.0",
+ "hayro-ccitt",
  "hayro-jbig2",
  "hayro-jpeg2000",
  "memchr",
  "rustc-hash 2.1.3",
  "smallvec",
+ "stringprep",
  "zune-jpeg",
 ]
 
@@ -4989,6 +4975,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6637bab7722d379c8b41ba849228d680cc12d0a45ba1fa2b48f2a30577a06731"
 
 [[package]]
+name = "stringprep"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4df3d392d81bd458a8a621b8bffbd2302a12ffe288a9d931670948749463b1"
+dependencies = [
+ "unicode-bidi",
+ "unicode-normalization",
+ "unicode-properties",
+]
+
+[[package]]
 name = "strum"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5506,6 +5503,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "unicode-properties"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
+
+[[package]]
 name = "unicode-script"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5577,7 +5580,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2e9aed918117e8152c9eddfd8362d73c465c23f26c44786aa331707b8a64fa2"
 dependencies = [
  "bytemuck",
- "fearless_simd 0.4.1",
+ "fearless_simd",
  "guillotiere",
  "log",
  "peniko",
@@ -5592,7 +5595,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbb2141a2bca6e6d598e471fd4d1d7eed8e020aad6a28187edda07f091a325dd"
 dependencies = [
  "bytemuck",
- "fearless_simd 0.4.1",
+ "fearless_simd",
  "guillotiere",
  "log",
  "peniko",
@@ -6649,6 +6652,7 @@ dependencies = [
  "wordcraft-geom",
  "wordcraft-layout",
  "wordcraft-pdf",
+ "wordcraft-pdf-import",
  "wordcraft-proof",
  "wordcraft-render",
  "zeroize",
@@ -6753,6 +6757,19 @@ dependencies = [
  "wordcraft-geom",
  "wordcraft-layout",
  "wordcraft-metafile",
+]
+
+[[package]]
+name = "wordcraft-pdf-import"
+version = "0.11.0"
+dependencies = [
+ "craft-pdf",
+ "image",
+ "kurbo",
+ "log",
+ "skrifa 0.47.0",
+ "wordcraft-doc",
+ "wordcraft-fonts",
 ]
 
 [[package]]

@@ -67,6 +67,20 @@
         <string>public.plain-text</string>
       </array>
     </dict>
+    <!-- PDF Reflow: a PDF opens as a new document (Save asks for a .docx), so WordCraft is a
+         viewer of PDFs, offered in Open With but never their default app. -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PDF Document</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.adobe.pdf</string>
+      </array>
+    </dict>
   </array>
 </dict>
 </plist>

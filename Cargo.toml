@@ -21,6 +21,7 @@ wordcraft-docbin = { path = "crates/docbin" }
 wordcraft-formats = { path = "crates/formats" }
 wordcraft-render = { path = "crates/render" }
 wordcraft-pdf = { path = "crates/pdf" }
+wordcraft-pdf-import = { path = "crates/pdf-import" }
 wordcraft-proof = { path = "crates/proof" }
 wordcraft-engine = { path = "crates/engine" }
 wordcraft-mcp = { path = "crates/mcp" }
@@ -111,3 +112,10 @@ debug = 0
 # Required by craft-pdf: the backend rejects writers that failed during unwinding.
 [patch.crates-io]
 krilla = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
+# craft-pdf's patched Hayro reader (decode limits, iterative page trees, bounded CMap nesting):
+# PDF Reflow reads with it. Cargo ignores a dependency's own patches, so they are repeated here.
+hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
+hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
+hayro-cmap = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
+hayro-postscript = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }

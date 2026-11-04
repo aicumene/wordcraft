@@ -39,7 +39,7 @@ pub type FileDialogAnswer = Result<Vec<String>, String>;
 const MAX_FONTS_PER_PICK: usize = 2000;
 
 const PICTURES: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "wmf", "emf"];
-const DOCUMENTS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc", "dot", "odt", "rtf", "txt", "md", "html", "htm", "tex", "json", "xml"];
+const DOCUMENTS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc", "dot", "odt", "rtf", "txt", "md", "html", "htm", "tex", "json", "xml", "pdf"];
 
 /// The file types Open offers, as (label, extensions; `*` is any file): pictures for Insert/Change
 /// Picture, recipient lists for Select Recipients › Use an Existing List…, documents otherwise.
@@ -558,6 +558,31 @@ mod tests {
             assert!(saved_text(&saved).contains("Again "));
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+
+    /// PDF Reflow: Open lists PDFs with the documents, and Save on a document opened from one asks
+    /// for a .docx, leaving the PDF as it was.
+    #[test]
+    fn a_pdf_opens_from_documents_and_saves_as_docx() {
+        assert!(open_filters("document")[0].1.contains(&"pdf"));
+        let dir = scratch("reflowed-pdf");
+        let original = dir.join("contract.pdf");
+        let (mut writer, _) = async_app();
+        writer.run("text.insert", json!({"text": "Pilot agreement"})).unwrap();
+        let bytes = wordcraft_engine::io::save_bytes("contract.pdf", &writer.session.doc).unwrap();
+        std::fs::write(&original, &bytes).unwrap();
+        let (mut a, shown) = async_app();
+        a.run("file.open", json!({"path": original.to_string_lossy()})).unwrap();
+        assert!(body_text(&a).contains("Pilot agreement"));
+        a.run("text.insert", json!({"text": "Signed "})).unwrap();
+        assert_eq!(a.run("file.save", json!({})).unwrap()["pending"], "saveAs");
+        assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: None });
+        let saved = dir.join("contract.docx");
+        answer(&shown, Some(&saved.to_string_lossy()));
+        assert_eq!(a.poll_file_dialog().unwrap().unwrap()["saved"], true);
+        assert!(saved_text(&saved).contains("Signed Pilot agreement"));
+        assert_eq!(std::fs::read(&original).unwrap(), bytes);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
