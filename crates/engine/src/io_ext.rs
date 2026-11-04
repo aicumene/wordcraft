@@ -10,6 +10,8 @@ pub fn open(ext: &str, bytes: &[u8], page: &wordcraft_doc::SectionProps) -> Opti
         "doc" | "dot" => Some(wordcraft_docbin::read(bytes).map_err(|e| e.to_string())),
         // Word XML Document (Flat OPC) or Word 2003 XML, told apart by the root element.
         "xml" => Some(wordcraft_docx::read_xml(bytes).map_err(|e| e.to_string())),
+        // PDF Reflow: the pages rebuilt as flowing, editable text.
+        "pdf" => Some(wordcraft_pdf_import::import(bytes)),
         // HTML, Markdown, ODT, RTF…: pictures fit the text width (see `io::fit_pictures`).
         other => wordcraft_formats::import_on(other, bytes, page).map(|r| {
             r.map(|mut doc| {

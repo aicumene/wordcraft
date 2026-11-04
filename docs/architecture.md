@@ -1,6 +1,6 @@
 # WordCraft architecture
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (`proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-03 · **Change:** minor (`pdf-import`: PDF Reflow at L2; previously minor: `proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 How WordCraft is built today (origin/main `40c5d51`). The longer design notes in
 `plan/architecture.md` are gitignored and local to the original author's machine; this file is the
@@ -22,6 +22,7 @@ winit or rfd.
 | L2 | `docx` | 8.4k | OOXML WordprocessingML reader and writer (Transitional and Strict namespaces, `.docx/.docm/.dotx/.dotm`), OMML, custom properties, VBA parts preserved |
 | L2 | `docbin` | 4.4k | Word 97-2003 `.doc` reader ([MS-DOC]: FIB, piece table, FKPs, SPRMs, stylesheet, lists, tables, notes, pictures) over a CFB container |
 | L2 | `formats` | 10.6k | TXT, Markdown, HTML, RTF, ODT and LaTeX import/export through a shared intermediate model |
+| L2 | `pdf-import` | 5.5k | PDF Reflow: a PDF's pages (craft-pdf's interpreter) rebuilt as a flowing document: lines, paragraphs, styles, lists, ruled tables, pictures, per-section headers and footers, footnotes |
 | L3 | `render` | 0.6k | vello_cpu rasteriser: pages and thumbnails from the display list; PNG/JPEG |
 | L3 | `pdf` | 1.6k | krilla PDF export: font subsets, selectable text, links, outline, tagging |
 | L4 | `engine` | 15.2k | `Session` (document, selection, undo, layout cache, view state), **command registry** (422 `CommandSpec`s in `cmd/*.rs`), Word feature catalog (`catalog.rs`), samples, file I/O dispatch (`io.rs`), Read Aloud sentence model |
@@ -35,7 +36,7 @@ winit or rfd.
 
 ## Data flow
 
-1. **Open:** `engine::io` picks a reader by extension (`docx`, `docbin`, `formats`, JSON) and
+1. **Open:** `engine::io` picks a reader by extension (`docx`, `docbin`, `formats`, `pdf-import`, JSON) and
    produces a `doc::Document`.
 2. **Edit:** every user-visible action is a command id run through `Session::run` (ribbon,
    shortcuts, command search, CLI, control channel and MCP all dispatch by id). `Session::run`
@@ -64,5 +65,6 @@ winit or rfd.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-03 | minor | `pdf-import` (L2): PDF Reflow opens PDFs as editable documents; `engine::io` opens `.pdf` by extension and by its `%PDF-` header |
 | 2026-10-10 | minor | `proof`: proofing languages (English, Polish), affix engine, Polish patterns; layout and engine route each run by its language |
 | 2026-10-10 | major | First committed architecture doc, from the crates' sources and `AGENTS.md` |

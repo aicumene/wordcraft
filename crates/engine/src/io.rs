@@ -24,6 +24,7 @@ pub const OPEN_EXTS: &[&str] = &[
     "latex",
     "ltx",
     "xml",
+    "pdf",
     "wcraft.json",
     "json",
 ];
@@ -356,6 +357,8 @@ fn open_by_content(
         (wordcraft_formats::rtf::import(bytes)?, false)
     } else if is_word_xml(bytes) {
         (wordcraft_docx::read_xml(bytes).map_err(|e| format!("{name}: {e}"))?, false)
+    } else if bytes.get(..1024).unwrap_or(bytes).windows(5).any(|w| w == b"%PDF-") {
+        (wordcraft_pdf_import::import(bytes).map_err(|e| format!("{name}: {e}"))?, false)
     } else if matches!(ext, "doc" | "dot" | "docx" | "docm" | "dotx" | "dotm" | "rtf") && looks_like_web_page(bytes) {
         let opened = crate::io_ext::open("html", bytes, page).unwrap_or_else(|| Err(format!("{name}: can't open web pages")));
         (opened?, false)
